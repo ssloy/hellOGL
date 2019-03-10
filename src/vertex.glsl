@@ -13,6 +13,7 @@ out vec3 Normal_cameraspace;
 out vec3 LightDirection_cameraspace;
 out vec3 tangent_cameraspace;
 out vec3 bitangent_cameraspace;
+out vec3 EyeDirection_cameraspace;
 
 // Values that stay constant for the entire mesh
 uniform vec3 LightPosition_worldspace;
@@ -25,6 +26,7 @@ void main() {
     UV = vertexUV;  // UV of the vertex. No special space for this one.
 
     Normal_cameraspace = (transpose(inverse(V*M)) * vec4(vertexNormal_modelspace, 0)).xyz;  // Normal of the the vertex, in camera space
+    EyeDirection_cameraspace = vec3(0,0,1);  // Vector that goes from the vertex to the camera, in camera space.
 
     vec3 vertexPosition_cameraspace = (V*M*vec4(vertexPosition_modelspace,1)).xyz;
     vec3 LightPosition_cameraspace  = (V*  vec4(LightPosition_worldspace, 1)).xyz;   // M is ommited because it's identity.
