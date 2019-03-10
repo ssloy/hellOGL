@@ -1,0 +1,9 @@
+[submodule "lib/stb"]
+	path = lib/stb
+	url = https://github.com/nothings/stb
+[submodule "lib/tinyrenderer"]
+	path = lib/tinyrenderer
+	url = https://github.com/ssloy/tinyrenderer
+[submodule "lib/glfw"]
+	path = lib/glfw
+	url = https://github.com/glfw/glfw
