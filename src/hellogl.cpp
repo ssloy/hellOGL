@@ -10,6 +10,8 @@
 #include <tinyrenderer/geometry.h>
 #include "model.h"
 
+bool animate = false;
+
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode) {
     std::cerr << "key_callback(" << window << ", " << key << ", " << scancode << ", " << action << ", " << mode << ");" << std::endl;
     if (GLFW_RELEASE == action) {
@@ -17,6 +19,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     }
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GL_TRUE);
+    }
+    if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+        animate = !animate;
     }
 }
 
@@ -111,6 +116,20 @@ int setup_window(GLFWwindow* &window, const GLuint width, const GLuint height) {
     return 0;
 }
 
+Matrix rot_z(const float angle) {
+    Matrix R = Matrix::identity();
+    R[0][0] = R[2][2] = cos(angle);
+    R[2][0] = sin(angle);
+    R[0][2] = -R[2][0];
+    return R;
+}
+
+template <size_t DimRows,size_t DimCols,class T> void export_row_major(mat<DimRows,DimCols,T> m, float *arr) {
+    for (size_t i=DimRows; i--; )
+        for (size_t j=DimCols; j--; arr[i+j*DimCols]=m[i][j]);
+}
+
+
 int main(int argc, char** argv) {
     std::cout << "Usage: " << argv[0] << " model.obj" << std::endl;
     std::string file_obj ("../lib/tinyrenderer/obj/diablo3_pose/diablo3_pose.obj");
@@ -127,10 +146,18 @@ int main(int argc, char** argv) {
     }
 
     GLuint prog_hdlr = set_shaders("../src/vertex.glsl", "../src/fragment.glsl");
+
+    Matrix M = Matrix::identity();
+    Matrix V = Matrix::identity();
+    Matrix P = Matrix::identity();
+
     // Get handles to our uniforms
     GLuint LightID = glGetUniformLocation(prog_hdlr, "LightPosition_worldspace");
+    GLuint MatrixID = glGetUniformLocation(prog_hdlr, "MVP");
+    GLuint ViewMatrixID  = glGetUniformLocation(prog_hdlr, "V");
+    GLuint ModelMatrixID = glGetUniformLocation(prog_hdlr, "M");
 
-    std::vector<GLfloat> vertices(3*3*model.nfaces(), 0);
+    std::vector<GLfloat>    vertices(3*3*model.nfaces(), 0);
     std::vector<GLfloat>     normals(3*3*model.nfaces(), 0);
 
     for (int i=0; i<model.nfaces(); i++) {
@@ -179,6 +206,20 @@ int main(int argc, char** argv) {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // wipe the screen buffers
 
+        { // Send our transformation to the currently bound shader
+            { // rotate the model around the z axis with each frame
+                Matrix R = rot_z(0.01);
+                if (animate) M = R*M;
+            }
+
+            float tmp[16] = {0};
+            export_row_major(M, tmp);
+            glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, tmp);
+            export_row_major(V, tmp);
+            glUniformMatrix4fv(ViewMatrixID,  1, GL_FALSE, tmp);
+            export_row_major(P*V*M, tmp);
+            glUniformMatrix4fv(MatrixID,      1, GL_FALSE, tmp);
+        }
         const float lightpos[3] = {40, 40, 40}; // the light position sent to the vertex shader
         glUniform3fv(LightID, 1, lightpos);
 
@@ -194,6 +235,7 @@ int main(int argc, char** argv) {
     glDeleteProgram(prog_hdlr); // note that the shader objects are automatically detached and deleted, since they were flagged for deletion by a previous call to glDeleteShader
     glDisableVertexAttribArray(0);
     glDeleteBuffers(1, &vertexbuffer);
+    glDeleteBuffers(1, &normalbuffer);
     glDeleteVertexArrays(1, &vao);
 
     glfwTerminate();
