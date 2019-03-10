@@ -153,12 +153,14 @@ template <size_t DimRows,size_t DimCols,class T> void export_row_major(mat<DimRo
 
 
 int main(int argc, char** argv) {
-    std::cout << "Usage: " << argv[0] << " model.obj tangentnormals.jpg" << std::endl;
+    std::cout << "Usage: " << argv[0] << " model.obj tangentnormals.jpg diffuse.jpg" << std::endl;
     std::string file_obj ("../lib/tinyrenderer/obj/diablo3_pose/diablo3_pose.obj");
     std::string file_nm  ("../lib/tinyrenderer/obj/diablo3_pose/diablo3_pose_nm_tangent.tga");
-    if (3==argc) {
+    std::string file_diff("../lib/tinyrenderer/obj/diablo3_pose/diablo3_pose_diffuse.tga");
+    if (4==argc) {
         file_obj  = std::string(argv[1]);
         file_nm   = std::string(argv[2]);
+        file_diff = std::string(argv[3]);
     }
     Model model(file_obj.c_str());
 
@@ -181,6 +183,7 @@ int main(int argc, char** argv) {
     GLuint ViewMatrixID  = glGetUniformLocation(prog_hdlr, "V");
     GLuint ModelMatrixID = glGetUniformLocation(prog_hdlr, "M");
     GLuint Texture0ID    = glGetUniformLocation(prog_hdlr, "tangentnm");
+    GLuint Texture1ID  = glGetUniformLocation(prog_hdlr, "diffuse");
 
     std::vector<GLfloat>    vertices(3*3*model.nfaces(), 0);
     std::vector<GLfloat>     normals(3*3*model.nfaces(), 0);
@@ -257,9 +260,12 @@ int main(int argc, char** argv) {
 
     // Load the textures
     GLuint tex_normals = load_texture(file_nm);
+    GLuint tex_diffuse = load_texture(file_diff);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex_normals);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, tex_diffuse);
 
     glViewport(0, 0, width, height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -298,6 +304,7 @@ int main(int argc, char** argv) {
         const float lightpos[3] = {40, 40, 40}; // the light position sent to the vertex shader
         glUniform3fv(LightID, 1, lightpos);
         glUniform1i(Texture0ID, 0);
+        glUniform1i(Texture1ID, 1);
 
         // draw the triangles!
         glDrawArrays(GL_TRIANGLES, 0, vertices.size());
@@ -316,6 +323,7 @@ int main(int argc, char** argv) {
     glDeleteBuffers(1, &bitangentbuffer);
     glDeleteBuffers(1, &uvbuffer);
     glDeleteTextures(1, &tex_normals);
+    glDeleteTextures(1, &tex_diffuse);
     glDeleteVertexArrays(1, &vao);
 
     glfwTerminate();
