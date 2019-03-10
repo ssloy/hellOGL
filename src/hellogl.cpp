@@ -127,11 +127,16 @@ int main(int argc, char** argv) {
     }
 
     GLuint prog_hdlr = set_shaders("../src/vertex.glsl", "../src/fragment.glsl");
+    // Get handles to our uniforms
+    GLuint LightID = glGetUniformLocation(prog_hdlr, "LightPosition_worldspace");
 
     std::vector<GLfloat> vertices(3*3*model.nfaces(), 0);
+    std::vector<GLfloat>     normals(3*3*model.nfaces(), 0);
+
     for (int i=0; i<model.nfaces(); i++) {
         for (int j=0; j<3; j++) {
             for (int k=0; k<3; k++) vertices[(i*3+j)*3 + k] = model.point(model.vert(i, j))[k];
+            for (int k=0; k<3; k++)  normals[(i*3+j)*3 + k] = model.normal(i, j)[k];
         }
     }
 
@@ -146,6 +151,13 @@ int main(int argc, char** argv) {
     glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer); // bind our VBO as being the active buffer and storing vertex attributes (coordinates)
     glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*vertices.size(), vertices.data(), GL_STATIC_DRAW); // copy the vertex data to our buffer. The buffer contains sizeof(GLfloat) * 3 * nverts bytes
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray(1);
+    GLuint normalbuffer = 0;
+    glGenBuffers(1, &normalbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+    glBufferData(GL_ARRAY_BUFFER, normals.size()*sizeof(GLfloat), normals.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
     glViewport(0, 0, width, height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -167,10 +179,13 @@ int main(int argc, char** argv) {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // wipe the screen buffers
 
+        const float lightpos[3] = {40, 40, 40}; // the light position sent to the vertex shader
+        glUniform3fv(LightID, 1, lightpos);
+
         // draw the triangles!
         glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 
-         glfwSwapBuffers(window);
+        glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
