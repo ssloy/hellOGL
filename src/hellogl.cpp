@@ -7,10 +7,32 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
 #include <tinyrenderer/geometry.h>
 #include "model.h"
 
 bool animate = false;
+
+GLuint load_texture(const std::string &imagepath) {
+    std::cerr << "load_texture(\"" << imagepath << "\");" << std::endl;
+
+    stbi_set_flip_vertically_on_load(1);
+    int width, height, bpp;
+    unsigned char* rgb = stbi_load(imagepath.c_str(), &width, &height, &bpp, 3);
+
+    // Create one OpenGL texture
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,  0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    stbi_image_free(rgb);
+    return textureID;
+}
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode) {
     std::cerr << "key_callback(" << window << ", " << key << ", " << scancode << ", " << action << ", " << mode << ");" << std::endl;
@@ -131,10 +153,12 @@ template <size_t DimRows,size_t DimCols,class T> void export_row_major(mat<DimRo
 
 
 int main(int argc, char** argv) {
-    std::cout << "Usage: " << argv[0] << " model.obj" << std::endl;
+    std::cout << "Usage: " << argv[0] << " model.obj tangentnormals.jpg" << std::endl;
     std::string file_obj ("../lib/tinyrenderer/obj/diablo3_pose/diablo3_pose.obj");
-    if (2==argc) {
+    std::string file_nm  ("../lib/tinyrenderer/obj/diablo3_pose/diablo3_pose_nm_tangent.tga");
+    if (3==argc) {
         file_obj  = std::string(argv[1]);
+        file_nm   = std::string(argv[2]);
     }
     Model model(file_obj.c_str());
 
@@ -156,14 +180,37 @@ int main(int argc, char** argv) {
     GLuint MatrixID = glGetUniformLocation(prog_hdlr, "MVP");
     GLuint ViewMatrixID  = glGetUniformLocation(prog_hdlr, "V");
     GLuint ModelMatrixID = glGetUniformLocation(prog_hdlr, "M");
+    GLuint Texture0ID    = glGetUniformLocation(prog_hdlr, "tangentnm");
 
     std::vector<GLfloat>    vertices(3*3*model.nfaces(), 0);
     std::vector<GLfloat>     normals(3*3*model.nfaces(), 0);
+    std::vector<GLfloat>    tangents(3*3*model.nfaces(), 0);
+    std::vector<GLfloat>  bitangents(3*3*model.nfaces(), 0);
+    std::vector<GLfloat>      uvs(2*3*model.nfaces(), 0);
 
     for (int i=0; i<model.nfaces(); i++) {
+        Vec3f v0 = model.point(model.vert(i, 0));
+        Vec3f v1 = model.point(model.vert(i, 1));
+        Vec3f v2 = model.point(model.vert(i, 2));
+
+        Vec3f v01 = proj<3>(M*(embed<4>(v1 - v0)));
+        Vec3f v02 = proj<3>(M*(embed<4>(v2 - v0)));
+        mat<3, 3, float> A;
+        A[0] = v01;
+        A[1] = v02;
+        A[2] = cross(v01, v02).normalize();
+
+        Vec3f tgt   = A.invert() * Vec3f(model.uv(i, 1).x - model.uv(i, 0).x, model.uv(i, 2).x - model.uv(i, 0).x, 0);
+        Vec3f bitgt = A.invert() * Vec3f(model.uv(i, 1).y - model.uv(i, 0).y, model.uv(i, 2).y - model.uv(i, 0).y, 0);
+        tgt.normalize();
+        bitgt.normalize();
+
         for (int j=0; j<3; j++) {
+            for (int k=0; k<2; k++)      uvs[(i*3+j)*2 + k] = model.uv(i, j)[k];
             for (int k=0; k<3; k++) vertices[(i*3+j)*3 + k] = model.point(model.vert(i, j))[k];
             for (int k=0; k<3; k++)  normals[(i*3+j)*3 + k] = model.normal(i, j)[k];
+            for (int k=0; k<3; k++)    tangents[(i*3+j)*3 + k] = tgt[k];
+            for (int k=0; k<3; k++)  bitangents[(i*3+j)*3 + k] = bitgt[k];
         }
     }
 
@@ -185,6 +232,34 @@ int main(int argc, char** argv) {
     glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
     glBufferData(GL_ARRAY_BUFFER, normals.size()*sizeof(GLfloat), normals.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray(2);
+    GLuint tangentbuffer = 0;
+    glGenBuffers(1, &tangentbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, tangentbuffer);
+    glBufferData(GL_ARRAY_BUFFER, tangents.size()*sizeof(GLfloat), tangents.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray(3);
+    GLuint bitangentbuffer = 0;
+    glGenBuffers(1, &bitangentbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, bitangentbuffer);
+    glBufferData(GL_ARRAY_BUFFER, bitangents.size()*sizeof(GLfloat), bitangents.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray(4);
+    GLuint uvbuffer = 0;
+    glGenBuffers(1, &uvbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+    glBufferData(GL_ARRAY_BUFFER, uvs.size()*sizeof(GLfloat), uvs.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+
+    // Load the textures
+    GLuint tex_normals = load_texture(file_nm);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex_normals);
 
     glViewport(0, 0, width, height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -222,6 +297,7 @@ int main(int argc, char** argv) {
         }
         const float lightpos[3] = {40, 40, 40}; // the light position sent to the vertex shader
         glUniform3fv(LightID, 1, lightpos);
+        glUniform1i(Texture0ID, 0);
 
         // draw the triangles!
         glDrawArrays(GL_TRIANGLES, 0, vertices.size());
@@ -236,6 +312,10 @@ int main(int argc, char** argv) {
     glDisableVertexAttribArray(0);
     glDeleteBuffers(1, &vertexbuffer);
     glDeleteBuffers(1, &normalbuffer);
+    glDeleteBuffers(1, &tangentbuffer);
+    glDeleteBuffers(1, &bitangentbuffer);
+    glDeleteBuffers(1, &uvbuffer);
+    glDeleteTextures(1, &tex_normals);
     glDeleteVertexArrays(1, &vao);
 
     glfwTerminate();
